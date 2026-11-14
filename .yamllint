@@ -4,6 +4,7 @@ extends: default
 ignore: |
   build/
   .git/
+  playbooks/group_vars/all/vault.yml
 
 rules:
   line-length:

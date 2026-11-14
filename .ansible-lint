@@ -4,3 +4,4 @@ exclude_paths:
   - build/
   - tools/
   - .git/
+  - playbooks/group_vars/all/vault.yml
