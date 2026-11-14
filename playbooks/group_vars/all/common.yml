@@ -1,0 +1,99 @@
+---
+# Variables communes aux environnements test et prod.
+# Les valeurs propres a chaque environnement (prefixe IP, ports publies)
+# sont dans inventories/<env>/group_vars/all/env.yml.
+
+ansible_managed: "Fichier genere par Ansible - ne pas modifier a la main"
+project_name: "netdevops-{{ env_name }}"
+build_dir: "{{ playbook_dir }}/../build/{{ env_name }}"
+image_prefix: netdevops
+image_tag: latest
+
+dns_domain: entreprise.local
+dns_upstream_servers:
+  - 1.1.1.1
+  - 9.9.9.9
+
+# --- Plan d'adressage (3 reseaux Docker isoles) ---------------------------
+# La passerelle Docker de chaque reseau est en .254 pour laisser le .1
+# au routeur-pare-feu (router-fw), comme sur le schema du sujet.
+networks:
+  dmz:
+    name: dmz-net
+    subnet: "{{ net_prefix }}.1.0/24"
+    docker_gateway: "{{ net_prefix }}.1.254"
+    router_ip: "{{ net_prefix }}.1.1"
+  lan:
+    name: lan-net
+    subnet: "{{ net_prefix }}.2.0/24"
+    docker_gateway: "{{ net_prefix }}.2.254"
+    router_ip: "{{ net_prefix }}.2.1"
+  mgmt:
+    name: mgmt-net
+    subnet: "{{ net_prefix }}.3.0/24"
+    docker_gateway: "{{ net_prefix }}.3.254"
+    router_ip: "{{ net_prefix }}.3.1"
+
+ips:
+  web_dmz: "{{ net_prefix }}.1.10"
+  dns_lan: "{{ net_prefix }}.2.10"
+  client1: "{{ net_prefix }}.2.100"
+  client2: "{{ net_prefix }}.2.101"
+  prometheus: "{{ net_prefix }}.3.10"
+  grafana: "{{ net_prefix }}.3.11"
+  node_exporter: "{{ net_prefix }}.3.12"
+  blackbox: "{{ net_prefix }}.3.13"
+
+# --- Enregistrements DNS internes servis par dns-lan ----------------------
+dns_records:
+  - name: "web.{{ dns_domain }}"
+    ip: "{{ ips.web_dmz }}"
+  - name: "dns.{{ dns_domain }}"
+    ip: "{{ ips.dns_lan }}"
+  - name: "router.{{ dns_domain }}"
+    ip: "{{ networks.lan.router_ip }}"
+  - name: "grafana.{{ dns_domain }}"
+    ip: "{{ ips.grafana }}"
+
+# --- Matrice des flux (pare-feu router-fw, politique par defaut : DROP) ---
+# Chaque entree devient une regle "accept" dans la chaine forward.
+# Tout flux absent de cette liste est bloque et journalise.
+fw_forward_rules:
+  - name: "Internet/LAN -> web-dmz HTTP/HTTPS"
+    daddr: "{{ ips.web_dmz }}"
+    proto: tcp
+    dports: [80, 443]
+  - name: "LAN -> Internet (web)"
+    saddr: "{{ networks.lan.subnet }}"
+    daddr_not: "{{ net_prefix }}.0.0/16"
+    proto: tcp
+    dports: [80, 443]
+  - name: "dns-lan -> resolveurs publics (forward DNS)"
+    saddr: "{{ ips.dns_lan }}"
+    daddr_not: "{{ net_prefix }}.0.0/16"
+    proto: udp
+    dports: [53]
+  - name: "dns-lan -> resolveurs publics (DNS sur TCP)"
+    saddr: "{{ ips.dns_lan }}"
+    daddr_not: "{{ net_prefix }}.0.0/16"
+    proto: tcp
+    dports: [53]
+  - name: "Management -> toutes zones (supervision, administration)"
+    saddr: "{{ networks.mgmt.subnet }}"
+
+# Ports exposes "sur Internet" par le routeur (DNAT vers web-dmz)
+fw_dnat_ports: [80, 443]
+
+# --- Supervision -----------------------------------------------------------
+grafana_admin_user: admin
+grafana_admin_password: "{{ vault_grafana_admin_password }}"
+prometheus_retention: 7d
+
+# --- Versions des images tierces (epinglees) -------------------------------
+images:
+  alpine: "alpine:3.22"
+  nginx: "nginx:1.28-alpine"
+  prometheus: "prom/prometheus:v3.5.0"
+  grafana: "grafana/grafana:12.1.0"
+  node_exporter: "prom/node-exporter:v1.9.1"
+  blackbox: "prom/blackbox-exporter:v0.27.0"

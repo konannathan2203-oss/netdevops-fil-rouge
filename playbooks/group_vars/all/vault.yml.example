@@ -1,0 +1,4 @@
+---
+# Modele du fichier de secrets. Ne JAMAIS committer vault.yml en clair :
+# lancer scripts/init_vault.sh qui genere vault.yml chiffre avec Ansible Vault.
+vault_grafana_admin_password: "a-remplacer"

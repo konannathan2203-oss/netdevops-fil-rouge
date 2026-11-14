@@ -1,0 +1,31 @@
+---
+# Deploiement complet de l'infrastructure NetDevOps.
+# Tags : render (generer les configurations), build (images), deploy (conteneurs)
+#   ansible-playbook -i inventories/test playbooks/site.yml --ask-vault-pass
+- name: Deployer l'infrastructure reseau segmentee
+  hosts: all
+  gather_facts: false
+
+  pre_tasks:
+    - name: Calculer la racine du depot
+      ansible.builtin.set_fact:
+        repo_root: "{{ (playbook_dir + '/..') | realpath }}"
+      tags: [always]
+
+    - name: Creer le dossier de generation
+      ansible.builtin.file:
+        path: "{{ build_dir }}"
+        state: directory
+        mode: "0755"
+      tags: [always]
+
+  roles:
+    - role: router_fw
+      tags: [render]
+    - role: dns_lan
+      tags: [render]
+    - role: web_dmz
+      tags: [render]
+    - role: monitoring
+      tags: [render]
+    - role: compose_deploy

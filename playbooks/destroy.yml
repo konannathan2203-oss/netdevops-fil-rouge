@@ -1,0 +1,19 @@
+---
+# Supprime un environnement (conteneurs, reseaux et volumes).
+#   ansible-playbook -i inventories/test playbooks/destroy.yml
+- name: Supprimer l'environnement
+  hosts: all
+  gather_facts: false
+
+  tasks:
+    - name: Verifier la presence du fichier Compose
+      ansible.builtin.stat:
+        path: "{{ playbook_dir }}/../build/{{ env_name }}/docker-compose.yml"
+      register: destroy_compose_file
+
+    - name: Arreter et supprimer les conteneurs, reseaux et volumes
+      ansible.builtin.command: >-
+        docker compose -f "{{ playbook_dir }}/../build/{{ env_name }}/docker-compose.yml"
+        down --volumes --remove-orphans
+      changed_when: true
+      when: destroy_compose_file.stat.exists
