@@ -65,7 +65,7 @@ pipeline {
                           -e SONAR_TOKEN="$SONAR_TOKEN" \
                           -e SONAR_USER_HOME=/usr/src/.sonar-cache \
                           -v "$WORKSPACE:/usr/src" \
-                          "$SONAR_SCANNER_IMAGE"
+                          "$SONAR_SCANNER_IMAGE" sonar-scanner -Dsonar.working.directory=/usr/src/.scannerwork
                     '''
                 }
             }
