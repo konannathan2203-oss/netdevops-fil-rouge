@@ -1,0 +1,3 @@
+---
+dns_lan_cache_size: 1000
+dns_lan_log_queries: true

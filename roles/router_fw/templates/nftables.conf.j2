@@ -1,0 +1,61 @@
+#!/usr/sbin/nft -f
+# {{ ansible_managed }}
+# Pare-feu du routeur router-fw - environnement {{ env_name }}
+# Politique : tout est interdit sauf les flux de la matrice (fw_forward_rules).
+
+flush ruleset
+
+define DMZ_NET = {{ networks.dmz.subnet }}
+define LAN_NET = {{ networks.lan.subnet }}
+define MGMT_NET = {{ networks.mgmt.subnet }}
+define WEB_DMZ = {{ ips.web_dmz }}
+
+table inet filter {
+    chain input {
+        type filter hook input priority filter; policy drop;
+        ct state established,related accept
+        ct state invalid counter drop
+        iif "lo" accept
+        # Ping du routeur depuis les zones internes, limite contre le flood
+        ip saddr { $DMZ_NET, $LAN_NET, $MGMT_NET } icmp type echo-request limit rate 10/second accept
+        counter log prefix "FW-INPUT-DROP: " level warn
+    }
+
+    chain forward {
+        type filter hook forward priority filter; policy drop;
+        ct state established,related accept
+        ct state invalid counter drop
+
+{% for rule in fw_forward_rules %}
+        # {{ rule.name }}
+        {% if rule.saddr is defined %}ip saddr {{ rule.saddr }} {% endif %}{% if rule.daddr is defined %}ip daddr {{ rule.daddr }} {% endif %}{% if rule.daddr_not is defined %}ip daddr != {{ rule.daddr_not }} {% endif %}{% if rule.proto is defined %}{{ rule.proto }} dport { {{ rule.dports | join(', ') }} } {% endif %}counter accept
+{% endfor %}
+
+        # Diagnostic : ping LAN/Management -> autres zones (limite)
+        ip saddr { $LAN_NET, $MGMT_NET } icmp type echo-request limit rate 10/second accept
+
+        # Tout le reste est journalise puis bloque par la politique DROP
+        # (DMZ -> LAN, Internet -> DNS, LAN -> Management, DMZ -> Internet...)
+        counter log prefix "FW-FORWARD-DROP: " level warn
+    }
+
+    chain output {
+        type filter hook output priority filter; policy accept;
+    }
+}
+
+table ip nat {
+    chain prerouting {
+        type nat hook prerouting priority dstnat; policy accept;
+        # "Internet" -> routeur:80/443 -> DNAT vers le serveur web de la DMZ
+        fib daddr type local tcp dport { {{ fw_dnat_ports | join(', ') }} } counter dnat to $WEB_DMZ
+    }
+
+    chain postrouting {
+        type nat hook postrouting priority srcnat; policy accept;
+        # Le trafic DNATe repasse par le routeur au retour
+        ip daddr $WEB_DMZ ct status dnat counter masquerade
+        # Sortie vers Internet des zones internes
+        ip saddr {{ net_prefix }}.0.0/16 ip daddr != {{ net_prefix }}.0.0/16 counter masquerade
+    }
+}

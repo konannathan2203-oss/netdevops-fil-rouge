@@ -1,0 +1,30 @@
+# {{ ansible_managed }}
+# DNS interne du LAN - environnement {{ env_name }}
+
+# Ne pas lire /etc/resolv.conf : on choisit nous-memes les resolveurs amont
+no-resolv
+{% for server in dns_upstream_servers %}
+server={{ server }}
+{% endfor %}
+
+# Durcissement
+domain-needed
+bogus-priv
+stop-dns-rebind
+rebind-localhost-ok
+no-hosts
+cache-size={{ dns_lan_cache_size }}
+
+# Domaine local de l'entreprise : jamais transmis a Internet
+domain={{ dns_domain }}
+local=/{{ dns_domain }}/
+
+# Enregistrements internes
+{% for record in dns_records %}
+address=/{{ record.name }}/{{ record.ip }}
+{% endfor %}
+
+{% if dns_lan_log_queries %}
+log-queries
+{% endif %}
+log-facility=-

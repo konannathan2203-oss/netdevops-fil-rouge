@@ -1,0 +1,23 @@
+---
+- name: Creer le dossier de configuration du routeur
+  ansible.builtin.file:
+    path: "{{ build_dir }}/router-fw"
+    state: directory
+    mode: "0755"
+
+- name: Generer les regles nftables depuis la matrice des flux
+  ansible.builtin.template:
+    src: nftables.conf.j2
+    dest: "{{ build_dir }}/router-fw/nftables.conf"
+    mode: "0644"
+  register: router_fw_rules
+
+- name: Verifier la syntaxe nftables si nft est disponible sur l'hote
+  ansible.builtin.command: nft --check --file "{{ build_dir }}/router-fw/nftables.conf"
+  register: router_fw_check
+  changed_when: false
+  failed_when: router_fw_check.rc not in [0, 127]
+  become: true
+  when:
+    - router_fw_rules is changed
+    - router_fw_check_syntax | bool

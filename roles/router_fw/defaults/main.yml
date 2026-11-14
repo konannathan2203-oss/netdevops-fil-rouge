@@ -1,0 +1,3 @@
+---
+# Mettre a true pour faire valider le fichier par "nft --check" (necessite sudo)
+router_fw_check_syntax: false

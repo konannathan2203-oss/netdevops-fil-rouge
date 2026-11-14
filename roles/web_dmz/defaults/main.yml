@@ -1,0 +1,3 @@
+---
+web_dmz_server_name: "web.{{ dns_domain }}"
+web_dmz_cert_days: 365

@@ -1,0 +1,37 @@
+---
+- name: Creer les dossiers du serveur web
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    mode: "0755"
+  loop:
+    - "{{ build_dir }}/web-dmz"
+    - "{{ build_dir }}/web-dmz/html"
+    - "{{ build_dir }}/web-dmz/tls"
+
+- name: Generer la configuration Nginx
+  ansible.builtin.template:
+    src: nginx.conf.j2
+    dest: "{{ build_dir }}/web-dmz/default.conf"
+    mode: "0644"
+
+- name: Generer la page d'accueil
+  ansible.builtin.template:
+    src: index.html.j2
+    dest: "{{ build_dir }}/web-dmz/html/index.html"
+    mode: "0644"
+
+- name: Generer un certificat TLS auto-signe (hors image Docker)
+  ansible.builtin.command:
+    cmd: >-
+      openssl req -x509 -nodes -newkey rsa:2048
+      -days {{ web_dmz_cert_days }}
+      -subj "/CN={{ web_dmz_server_name }}"
+      -keyout {{ build_dir }}/web-dmz/tls/server.key
+      -out {{ build_dir }}/web-dmz/tls/server.crt
+    creates: "{{ build_dir }}/web-dmz/tls/server.crt"
+
+- name: Restreindre les droits de la cle privee
+  ansible.builtin.file:
+    path: "{{ build_dir }}/web-dmz/tls/server.key"
+    mode: "0600"
