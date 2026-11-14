@@ -4,7 +4,7 @@ FROM ${BASE_IMAGE}
 LABEL org.opencontainers.image.title="router-fw" \
       org.opencontainers.image.description="Routeur pare-feu nftables entre DMZ, LAN et Management"
 
-RUN apk add --no-cache nftables iproute2 tcpdump
+RUN apk upgrade --no-cache && apk add --no-cache nftables iproute2 tcpdump
 
 COPY common/netinit.sh /usr/local/bin/netinit
 COPY router-fw/entrypoint.sh /entrypoint.sh

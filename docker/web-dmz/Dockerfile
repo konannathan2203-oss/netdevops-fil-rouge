@@ -4,7 +4,7 @@ FROM ${NGINX_IMAGE}
 LABEL org.opencontainers.image.title="web-dmz" \
       org.opencontainers.image.description="Serveur web Nginx de la DMZ"
 
-RUN apk add --no-cache iproute2 netcat-openbsd
+RUN apk upgrade --no-cache && apk add --no-cache iproute2 netcat-openbsd
 
 COPY common/netinit.sh /usr/local/bin/netinit
 COPY web-dmz/entrypoint.sh /netdevops-entrypoint.sh

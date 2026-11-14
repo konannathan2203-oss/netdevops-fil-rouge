@@ -4,7 +4,7 @@ FROM ${BASE_IMAGE}
 LABEL org.opencontainers.image.title="dns-lan" \
       org.opencontainers.image.description="Serveur DNS dnsmasq du LAN"
 
-RUN apk add --no-cache dnsmasq iproute2 bind-tools
+RUN apk upgrade --no-cache && apk add --no-cache dnsmasq iproute2 bind-tools
 
 COPY common/netinit.sh /usr/local/bin/netinit
 COPY dns-lan/entrypoint.sh /entrypoint.sh
