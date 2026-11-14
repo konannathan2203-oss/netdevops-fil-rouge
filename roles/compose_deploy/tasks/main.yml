@@ -1,0 +1,57 @@
+---
+- name: Generer le fichier Docker Compose de l'environnement
+  ansible.builtin.template:
+    src: docker-compose.yml.j2
+    dest: "{{ build_dir }}/docker-compose.yml"
+    mode: "0600"
+  tags: [render]
+
+- name: Generer le plan de tests de connectivite
+  ansible.builtin.template:
+    src: connectivity.json.j2
+    dest: "{{ build_dir }}/connectivity.json"
+    mode: "0644"
+  tags: [render]
+
+- name: Valider le fichier Docker Compose
+  ansible.builtin.command: docker compose -f "{{ build_dir }}/docker-compose.yml" config --quiet
+  changed_when: false
+  tags: [render]
+
+- name: Construire les images Docker
+  ansible.builtin.command: docker compose -f "{{ build_dir }}/docker-compose.yml" build --pull
+  register: compose_deploy_build
+  changed_when: true
+  tags: [build]
+
+- name: Demarrer ou mettre a jour les conteneurs
+  ansible.builtin.command: docker compose -f "{{ build_dir }}/docker-compose.yml" up -d --remove-orphans
+  register: compose_deploy_up
+  changed_when: "'Started' in compose_deploy_up.stderr or 'Recreated' in compose_deploy_up.stderr or 'Created' in compose_deploy_up.stderr"
+  tags: [deploy]
+
+- name: Attendre que les services critiques soient en bonne sante
+  ansible.builtin.command: >-
+    docker inspect --format '{% raw %}{{ .State.Health.Status }}{% endraw %}'
+    {{ env_name }}-{{ item }}
+  register: compose_deploy_health
+  until: compose_deploy_health.stdout == "healthy"
+  retries: "{{ compose_deploy_health_retries }}"
+  delay: "{{ compose_deploy_health_delay }}"
+  changed_when: false
+  loop: "{{ compose_deploy_healthchecked }}"
+  tags: [deploy]
+
+- name: Reappliquer les routes du blackbox exporter
+  ansible.builtin.command: docker compose -f "{{ build_dir }}/docker-compose.yml" up -d --force-recreate blackbox-routes
+  changed_when: true
+  tags: [deploy]
+
+- name: Afficher les acces
+  ansible.builtin.debug:
+    msg:
+      - "Environnement {{ env_name }} deploye"
+      - "Site web (Internet -> DMZ) : http://<IP de la VM>:{{ published_ports.http }} et https://<IP>:{{ published_ports.https }}"
+      - "Prometheus : http://<IP de la VM>:{{ published_ports.prometheus }}"
+      - "Grafana    : http://<IP de la VM>:{{ published_ports.grafana }} (utilisateur {{ grafana_admin_user }})"
+  tags: [deploy]

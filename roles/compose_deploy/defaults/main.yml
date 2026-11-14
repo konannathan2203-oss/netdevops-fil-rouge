@@ -1,0 +1,7 @@
+---
+compose_deploy_health_retries: 30
+compose_deploy_health_delay: 5
+compose_deploy_healthchecked:
+  - router-fw
+  - web-dmz
+  - dns-lan

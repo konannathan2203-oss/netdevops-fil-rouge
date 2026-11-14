@@ -1,0 +1,218 @@
+# {{ ansible_managed }}
+# Infrastructure NetDevOps - environnement {{ env_name }}
+name: {{ project_name }}
+
+x-common: &common
+  restart: unless-stopped
+  security_opt:
+    - no-new-privileges:true
+  logging:
+    driver: json-file
+    options:
+      max-size: "10m"
+      max-file: "3"
+
+services:
+  # ---------------------------------------------------------------- Routeur
+  router-fw:
+    <<: *common
+    build:
+      context: {{ repo_root }}/docker
+      dockerfile: router-fw/Dockerfile
+      args:
+        BASE_IMAGE: {{ images.alpine }}
+    image: {{ image_prefix }}/router-fw:{{ image_tag }}
+    container_name: {{ env_name }}-router-fw
+    hostname: router-fw
+    cap_drop: [ALL]
+    cap_add: [NET_ADMIN, NET_RAW]
+    sysctls:
+      net.ipv4.ip_forward: 1
+    environment:
+      NET_ROUTES: "default via {{ networks.dmz.docker_gateway }}"
+    volumes:
+      - {{ build_dir }}/router-fw/nftables.conf:/etc/nftables/nftables.conf:ro
+    ports:
+      - "{{ published_ports.http }}:80"
+      - "{{ published_ports.https }}:443"
+    networks:
+      dmz-net:
+        ipv4_address: {{ networks.dmz.router_ip }}
+        gw_priority: 1
+      lan-net:
+        ipv4_address: {{ networks.lan.router_ip }}
+      mgmt-net:
+        ipv4_address: {{ networks.mgmt.router_ip }}
+
+  # ------------------------------------------------------------------- DMZ
+  web-dmz:
+    <<: *common
+    build:
+      context: {{ repo_root }}/docker
+      dockerfile: web-dmz/Dockerfile
+      args:
+        NGINX_IMAGE: {{ images.nginx }}
+    image: {{ image_prefix }}/web-dmz:{{ image_tag }}
+    container_name: {{ env_name }}-web-dmz
+    hostname: web-dmz
+    cap_add: [NET_ADMIN]
+    environment:
+      NET_ROUTES: "default via {{ networks.dmz.router_ip }}"
+    volumes:
+      - {{ build_dir }}/web-dmz/default.conf:/etc/nginx/conf.d/default.conf:ro
+      - {{ build_dir }}/web-dmz/html:/usr/share/nginx/html:ro
+      - {{ build_dir }}/web-dmz/tls:/etc/nginx/tls:ro
+    networks:
+      dmz-net:
+        ipv4_address: {{ ips.web_dmz }}
+    depends_on:
+      router-fw:
+        condition: service_healthy
+
+  # ------------------------------------------------------------------- LAN
+  dns-lan:
+    <<: *common
+    build:
+      context: {{ repo_root }}/docker
+      dockerfile: dns-lan/Dockerfile
+      args:
+        BASE_IMAGE: {{ images.alpine }}
+    image: {{ image_prefix }}/dns-lan:{{ image_tag }}
+    container_name: {{ env_name }}-dns-lan
+    hostname: dns-lan
+    cap_add: [NET_ADMIN]
+    environment:
+      NET_ROUTES: "default via {{ networks.lan.router_ip }}"
+    volumes:
+      - {{ build_dir }}/dns-lan/dnsmasq.conf:/etc/dnsmasq.d/netdevops.conf:ro
+    networks:
+      lan-net:
+        ipv4_address: {{ ips.dns_lan }}
+    depends_on:
+      router-fw:
+        condition: service_healthy
+
+{% for client in ['client1', 'client2'] %}
+  {{ client }}:
+    <<: *common
+    build:
+      context: {{ repo_root }}/docker
+      dockerfile: client/Dockerfile
+      args:
+        BASE_IMAGE: {{ images.alpine }}
+    image: {{ image_prefix }}/client:{{ image_tag }}
+    container_name: {{ env_name }}-{{ client }}
+    hostname: {{ client }}
+    cap_add: [NET_ADMIN]
+    environment:
+      NET_ROUTES: "default via {{ networks.lan.router_ip }}"
+    dns:
+      - {{ ips.dns_lan }}
+    dns_search:
+      - {{ dns_domain }}
+    networks:
+      lan-net:
+        ipv4_address: {{ ips[client] }}
+    depends_on:
+      dns-lan:
+        condition: service_healthy
+
+{% endfor %}
+  # ------------------------------------------------------------ Management
+  prometheus:
+    <<: *common
+    image: {{ images.prometheus }}
+    container_name: {{ env_name }}-prometheus
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.path=/prometheus
+      - --storage.tsdb.retention.time={{ prometheus_retention }}
+    volumes:
+      - {{ build_dir }}/monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus-data:/prometheus
+    ports:
+      - "{{ published_ports.prometheus }}:9090"
+    networks:
+      mgmt-net:
+        ipv4_address: {{ ips.prometheus }}
+
+  grafana:
+    <<: *common
+    image: {{ images.grafana }}
+    container_name: {{ env_name }}-grafana
+    environment:
+      GF_SECURITY_ADMIN_USER: {{ grafana_admin_user }}
+      GF_SECURITY_ADMIN_PASSWORD: "{{ grafana_admin_password }}"
+      GF_USERS_ALLOW_SIGN_UP: "false"
+      GF_AUTH_ANONYMOUS_ENABLED: "false"
+      GF_ANALYTICS_REPORTING_ENABLED: "false"
+    volumes:
+      - {{ build_dir }}/monitoring/grafana/provisioning:/etc/grafana/provisioning:ro
+      - {{ build_dir }}/monitoring/grafana/dashboards:/var/lib/grafana/dashboards:ro
+      - grafana-data:/var/lib/grafana
+    ports:
+      - "{{ published_ports.grafana }}:3000"
+    networks:
+      mgmt-net:
+        ipv4_address: {{ ips.grafana }}
+    depends_on:
+      - prometheus
+
+  node-exporter:
+    <<: *common
+    image: {{ images.node_exporter }}
+    container_name: {{ env_name }}-node-exporter
+    command:
+      - --path.rootfs=/host
+    pid: host
+    volumes:
+      - /:/host:ro
+    networks:
+      mgmt-net:
+        ipv4_address: {{ ips.node_exporter }}
+
+  blackbox:
+    <<: *common
+    image: {{ images.blackbox }}
+    container_name: {{ env_name }}-blackbox
+    command:
+      - --config.file=/etc/blackbox/blackbox.yml
+    volumes:
+      - {{ build_dir }}/monitoring/blackbox.yml:/etc/blackbox/blackbox.yml:ro
+    networks:
+      mgmt-net:
+        ipv4_address: {{ ips.blackbox }}
+
+  # Conteneur ephemere : ajoute au blackbox les routes vers la DMZ et le LAN
+  # via router-fw (le blackbox n'a pas les droits pour le faire lui-meme).
+  blackbox-routes:
+    image: {{ image_prefix }}/client:{{ image_tag }}
+    container_name: {{ env_name }}-blackbox-routes
+    network_mode: "service:blackbox"
+    cap_add: [NET_ADMIN]
+    restart: "no"
+    environment:
+      ONESHOT: "1"
+      NET_ROUTES: "{{ networks.dmz.subnet }} via {{ networks.mgmt.router_ip }};{{ networks.lan.subnet }} via {{ networks.mgmt.router_ip }}"
+    depends_on:
+      blackbox:
+        condition: service_started
+      client1:
+        condition: service_started
+
+networks:
+{% for key in ['dmz', 'lan', 'mgmt'] %}
+  {{ networks[key].name }}:
+    name: {{ env_name }}-{{ networks[key].name }}
+    driver: bridge
+    driver_opts:
+      com.docker.network.bridge.name: br-{{ env_name }}-{{ key }}
+    ipam:
+      config:
+        - subnet: {{ networks[key].subnet }}
+          gateway: {{ networks[key].docker_gateway }}
+{% endfor %}
+
+volumes:
+  prometheus-data:
+  grafana-data:
