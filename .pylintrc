@@ -1,0 +1,5 @@
+[MAIN]
+disable=
+
+[FORMAT]
+max-line-length=130

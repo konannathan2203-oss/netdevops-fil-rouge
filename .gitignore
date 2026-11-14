@@ -1,0 +1,9 @@
+# Fichiers generes par Ansible (configs, Compose, certificats TLS)
+build/
+reports/
+.vault_pass
+*.retry
+__pycache__/
+*.pyc
+.scannerwork/
+.sonar-cache/
