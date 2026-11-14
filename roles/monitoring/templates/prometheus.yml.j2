@@ -1,0 +1,63 @@
+# {{ ansible_managed }}
+global:
+  scrape_interval: {{ monitoring_scrape_interval }}
+  evaluation_interval: {{ monitoring_scrape_interval }}
+  external_labels:
+    environment: {{ env_name }}
+
+scrape_configs:
+  - job_name: prometheus
+    static_configs:
+      - targets: ["localhost:9090"]
+
+  - job_name: node
+    static_configs:
+      - targets: ["{{ ips.node_exporter }}:9100"]
+        labels:
+          zone: management
+
+  - job_name: blackbox
+    static_configs:
+      - targets: ["{{ ips.blackbox }}:9115"]
+
+  # Disponibilite HTTP du serveur web (DMZ), via le routeur
+  - job_name: web-dmz-http
+    metrics_path: /probe
+    params:
+      module: [http_2xx]
+    static_configs:
+      - targets: ["http://{{ ips.web_dmz }}/"]
+        labels:
+          zone: dmz
+          service: web-dmz
+    relabel_configs: &blackbox_relabel
+      - source_labels: [__address__]
+        target_label: __param_target
+      - source_labels: [__param_target]
+        target_label: instance
+      - target_label: __address__
+        replacement: "{{ ips.blackbox }}:9115"
+
+  # Disponibilite HTTPS du serveur web (DMZ)
+  - job_name: web-dmz-https
+    metrics_path: /probe
+    params:
+      module: [https_2xx_selfsigned]
+    static_configs:
+      - targets: ["https://{{ ips.web_dmz }}/"]
+        labels:
+          zone: dmz
+          service: web-dmz
+    relabel_configs: *blackbox_relabel
+
+  # Resolution DNS par dns-lan (LAN), via le routeur
+  - job_name: dns-lan
+    metrics_path: /probe
+    params:
+      module: [dns_lan]
+    static_configs:
+      - targets: ["{{ ips.dns_lan }}:53"]
+        labels:
+          zone: lan
+          service: dns-lan
+    relabel_configs: *blackbox_relabel

@@ -1,0 +1,29 @@
+# {{ ansible_managed }}
+modules:
+  http_2xx:
+    prober: http
+    timeout: 5s
+    http:
+      preferred_ip_protocol: ip4
+
+  https_2xx_selfsigned:
+    prober: http
+    timeout: 5s
+    http:
+      preferred_ip_protocol: ip4
+      tls_config:
+        insecure_skip_verify: true
+
+  dns_lan:
+    prober: dns
+    timeout: 5s
+    dns:
+      transport_protocol: udp
+      preferred_ip_protocol: ip4
+      query_name: "web.{{ dns_domain }}"
+      query_type: A
+      valid_rcodes: [NOERROR]
+
+  tcp_connect:
+    prober: tcp
+    timeout: 5s

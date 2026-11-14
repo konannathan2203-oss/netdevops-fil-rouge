@@ -1,0 +1,41 @@
+---
+- name: Creer les dossiers de supervision
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    mode: "0755"
+  loop:
+    - "{{ build_dir }}/monitoring"
+    - "{{ build_dir }}/monitoring/grafana/provisioning/datasources"
+    - "{{ build_dir }}/monitoring/grafana/provisioning/dashboards"
+    - "{{ build_dir }}/monitoring/grafana/dashboards"
+
+- name: Generer la configuration Prometheus
+  ansible.builtin.template:
+    src: prometheus.yml.j2
+    dest: "{{ build_dir }}/monitoring/prometheus.yml"
+    mode: "0644"
+
+- name: Generer la configuration du blackbox exporter
+  ansible.builtin.template:
+    src: blackbox.yml.j2
+    dest: "{{ build_dir }}/monitoring/blackbox.yml"
+    mode: "0644"
+
+- name: Generer la source de donnees Grafana
+  ansible.builtin.template:
+    src: grafana-datasource.yml.j2
+    dest: "{{ build_dir }}/monitoring/grafana/provisioning/datasources/prometheus.yml"
+    mode: "0644"
+
+- name: Generer le fournisseur de dashboards Grafana
+  ansible.builtin.template:
+    src: grafana-dashboards.yml.j2
+    dest: "{{ build_dir }}/monitoring/grafana/provisioning/dashboards/netdevops.yml"
+    mode: "0644"
+
+- name: Copier les dashboards Grafana (JSON)
+  ansible.builtin.copy:
+    src: dashboards/
+    dest: "{{ build_dir }}/monitoring/grafana/dashboards/"
+    mode: "0644"
