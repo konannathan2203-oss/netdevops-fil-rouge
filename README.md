@@ -10,7 +10,7 @@ Une PME découpe son réseau en trois zones isolées (DMZ, LAN, Management) reli
                          Internet (ports 80/443 de l'hôte)
                                      │ DNAT
 ┌────────────────────────────────────▼──────────────────────────────────────┐
-│ Hôte Docker (Ubuntu 24.04)                                                 │
+│ Hôte Docker (Ubuntu 26.04 LTS)                                             │
 │                                                                            │
 │  dmz-net 172.20.1.0/24        lan-net 172.20.2.0/24     mgmt-net 172.20.3.0/24
 │  ┌─────────────┐              ┌─────────────┐           ┌──────────────────┐
@@ -76,9 +76,9 @@ Deux environnements sont générés à partir des mêmes rôles :
 └── docs/                        Architecture, flux, audit sécurité, démo
 ```
 
-## Installation sur Ubuntu 24.04
+## Installation sur Ubuntu
 
-Prérequis : VM Ubuntu 24.04, 6 Go de RAM, 4 vCPU, 40 Go de disque, accès Internet.
+Prérequis : VM Ubuntu 24.04 ou 26.04 LTS (testé sur 26.04.1), 6 Go de RAM, 4 vCPU, 40 Go de disque, accès Internet.
 
 ```bash
 # 1. Récupérer le dépôt
